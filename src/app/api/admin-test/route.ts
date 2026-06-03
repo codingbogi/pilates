@@ -3,7 +3,7 @@ import { profiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET() {
-  const email = "admin1110@studio.com";
+  const email = "admin111@studio.com";
 
   try {
     const rows = await db
