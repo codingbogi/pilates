@@ -1,0 +1,478 @@
+================================================================================
+  PILATES STUDIO - KOMPLETNO UPUTSTVO ZA SETUP
+  Full-Stack Web Aplikacija
+================================================================================
+
+SADRŽAJ:
+1. Pregled projekta
+2. Sistemski zahtevi
+3. Kreiranje baze podataka (PostgreSQL)
+4. Pokretanje SQL migracija
+5. Kreiranje admin naloga
+6. Kreiranje test klijenta
+7. Environment varijable
+8. Lokalno pokretanje
+9. Deploy na Netlify
+10. Troubleshooting
+
+================================================================================
+1. PREGLED PROJEKTA
+================================================================================
+
+Ovaj projekat koristi:
+- Next.js 14+ (App Router) - Frontend i Backend
+- PostgreSQL - Baza podataka
+- Drizzle ORM - Database toolkit
+- Tailwind CSS - Stilizovanje
+- Framer Motion - Animacije
+- bcryptjs - Heširanje lozinki
+- jose (JWT) - Autentifikacija sesija
+
+Admin kredencijali:
+- Email: admin111@studio.com
+- Password: adminpilates
+
+================================================================================
+2. SISTEMSKI ZAHTEVI
+================================================================================
+
+Potrebno vam je:
+- Node.js 18+ (preporučeno 20+)
+- PostgreSQL 14+ (ili Supabase / Neon / Railway PostgreSQL)
+- npm ili yarn
+- Git (opciono)
+
+Instalacija Node.js:
+  Idite na https://nodejs.org i preuzmite LTS verziju.
+
+Instalacija PostgreSQL:
+  - Windows: https://www.postgresql.org/download/windows/
+  - Mac: brew install postgresql
+  - Linux: sudo apt install postgresql postgresql-contrib
+
+================================================================================
+3. KREIRANJE BAZE PODATAKA
+================================================================================
+
+OPCIJA A: Lokalni PostgreSQL
+-----------------------------
+
+1. Otvorite terminal i pokrenite PostgreSQL:
+   
+   # Na Mac/Linux:
+   sudo -u postgres psql
+   
+   # Na Windows (PowerShell kao admin):
+   psql -U postgres
+
+2. Kreirajte bazu podataka:
+   
+   CREATE DATABASE pilates_studio;
+
+3. Kreirajte korisnika (opciono, možete koristiti default postgres korisnika):
+   
+   CREATE USER pilates_user WITH PASSWORD 'vaša_lozinka';
+   GRANT ALL PRIVILEGES ON DATABASE pilates_studio TO pilates_user;
+
+4. Vaš DATABASE_URL će biti:
+   postgresql://postgres:vaša_lozinka@127.0.0.1:5432/pilates_studio
+
+OPCIJA B: Supabase (besplatni cloud PostgreSQL)
+-------------------------------------------------
+
+1. Idite na https://supabase.com i registrujte se (besplatno)
+
+2. Kliknite "New Project"
+   - Izaberite organizaciju
+   - Unesite ime projekta (npr. "pilates-studio")
+   - Unesite database password (ZAPAMTITE OVU LOZINKU!)
+   - Izaberite region najbliži vama (npr. eu-central-1)
+   - Kliknite "Create new project"
+
+3. Sačekajte da se projekat kreira (1-2 minuta)
+
+4. Idite na Settings → Database
+   - Pronađite "Connection string" → "URI"
+   - Kopirajte taj string
+   - Zamenite [YOUR-PASSWORD] sa lozinkom koju ste uneli u koraku 2
+   - To je vaš DATABASE_URL
+
+OPCIJA C: Neon (besplatni cloud PostgreSQL)
+--------------------------------------------
+
+1. Idite na https://neon.tech i registrujte se
+2. Kreirajte novi projekat
+3. Kopirajte connection string - to je vaš DATABASE_URL
+
+================================================================================
+4. POKRETANJE SQL MIGRACIJA
+================================================================================
+
+METOD 1: Automatski sa Drizzle Kit (PREPORUČENO)
+--------------------------------------------------
+
+1. Prvo podesite .env fajl (videti sekciju 7)
+
+2. Pokrenite:
+   npx drizzle-kit push
+
+   Ovo će automatski kreirati sve tabele na osnovu šeme u src/db/schema.ts
+
+METOD 2: Ručno sa SQL-om
+--------------------------
+
+Ako želite ručno kreirati tabele, koristite sledeći SQL.
+
+Za lokalni PostgreSQL, pokrenite:
+   psql postgresql://postgres:vaša_lozinka@127.0.0.1:5432/pilates_studio
+
+Za Supabase, idite na SQL Editor u Supabase dashboard-u.
+
+Kopirajte i pokrenite sledeći SQL:
+
+------------ POČETAK SQL-a ------------
+
+-- Omogući uuid extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Tabela: profiles (korisnici)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  training_type TEXT NOT NULL DEFAULT 'group',
+  remaining_sessions INTEGER NOT NULL DEFAULT 0,
+  role TEXT NOT NULL DEFAULT 'client',
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Tabela: reservations (rezervacije)
+CREATE TABLE IF NOT EXISTS reservations (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  time_slot TEXT NOT NULL,
+  training_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Tabela: blocked_slots (blokirani termini)
+CREATE TABLE IF NOT EXISTS blocked_slots (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  date DATE NOT NULL,
+  time_slot TEXT,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Tabela: contact_messages (kontakt poruke)
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Indeksi za bolje performanse
+CREATE INDEX IF NOT EXISTS idx_reservations_date ON reservations(date);
+CREATE INDEX IF NOT EXISTS idx_reservations_user ON reservations(user_id);
+CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
+CREATE INDEX IF NOT EXISTS idx_blocked_slots_date ON blocked_slots(date);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);
+
+------------ KRAJ SQL-a ------------
+
+================================================================================
+5. KREIRANJE ADMIN NALOGA
+================================================================================
+
+METOD 1: Automatski kroz API (NAJLAKŠE)
+-----------------------------------------
+
+1. Pokrenite aplikaciju (npm run dev)
+2. Otvorite browser i idite na:
+   http://localhost:3000/api/seed
+
+3. Trebalo bi da vidite poruku:
+   {"message":"Admin user created successfully"}
+
+4. Admin kredencijali:
+   Email: admin111@studio.com
+   Password: adminpilates
+
+METOD 2: Ručno sa SQL-om
+--------------------------
+
+Ako želite ručno, potrebno je da heširate lozinku.
+
+U Node.js konzoli (pokrenite: node):
+
+   const bcrypt = require('bcryptjs');
+   bcrypt.hash('adminpilates', 10).then(hash => console.log(hash));
+
+Kopirajte rezultat i pokrenite SQL:
+
+   INSERT INTO profiles (full_name, email, password_hash, training_type, remaining_sessions, role)
+   VALUES (
+     'Administrator',
+     'admin111@studio.com',
+     '$2a$10$VAŠI_HEŠIRANI_REZULTAT_OVDE',
+     'group',
+     0,
+     'admin'
+   );
+
+METOD 3: Kroz Supabase Dashboard (ako koristite Supabase)
+-----------------------------------------------------------
+
+1. Idite na Authentication → Users
+2. Kliknite "Add User"
+   - Email: admin111@studio.com
+   - Password: adminpilates
+3. Zatim idite na Table Editor → profiles
+4. Kliknite "Insert row"
+5. Popunite:
+   - full_name: Administrator
+   - email: admin111@studio.com
+   - password_hash: (heš iz Metoda 2)
+   - training_type: group
+   - remaining_sessions: 0
+   - role: admin
+
+================================================================================
+6. KREIRANJE TEST KLIJENTA
+================================================================================
+
+METOD 1: Kroz Admin Panel (PREPORUČENO)
+-----------------------------------------
+
+1. Ulogujte se kao admin na http://localhost:3000/login
+   - Email: admin111@studio.com
+   - Password: adminpilates
+
+2. U admin panelu, kliknite na tab "Klijenti"
+
+3. Kliknite dugme "Dodaj klijenta"
+
+4. Popunite formu:
+   - Ime i prezime: Test Klijent
+   - Email: test@test.com
+   - Lozinka: test123
+   - Tip treninga: Grupni (ili Duo ili Individualni)
+
+5. Kliknite "Dodaj klijenta"
+
+6. Nakon dodavanja, možete da uredite broj preostalih treninga
+   klikom na ikonu za uređivanje pored klijenta.
+
+METOD 2: Kroz SQL
+-------------------
+
+U Node.js konzoli:
+   const bcrypt = require('bcryptjs');
+   bcrypt.hash('test123', 10).then(hash => console.log(hash));
+
+Zatim u SQL-u:
+   INSERT INTO profiles (full_name, email, password_hash, training_type, remaining_sessions, role)
+   VALUES (
+     'Test Klijent',
+     'test@test.com',
+     '$2a$10$VAŠI_HEŠIRANI_REZULTAT_OVDE',
+     'group',
+     10,
+     'client'
+   );
+
+================================================================================
+7. ENVIRONMENT VARIJABLE
+================================================================================
+
+Kreirajte fajl .env.local u root-u projekta (ili koristite .env):
+
+------------ .env.local ------------
+
+# OBAVEZNO: URL vaše PostgreSQL baze podataka
+DATABASE_URL=postgresql://postgres:vaša_lozinka@127.0.0.1:5432/pilates_studio
+
+# OPCIONO: JWT Secret (za production OBAVEZNO promeniti!)
+JWT_SECRET=vaš-tajni-ključ-promenite-u-produkciji
+
+------------ KRAJ .env.local ------------
+
+OBJAŠNJENJE VARIJABLI:
+
+DATABASE_URL
+  - Format: postgresql://korisnik:lozinka@host:port/ime_baze
+  - Za lokalni PostgreSQL: postgresql://postgres:postgres@127.0.0.1:5432/pilates_studio
+  - Za Supabase: Pronađite u Settings → Database → Connection string → URI
+  - Za Neon: Pronađite u Dashboard nakon kreiranja projekta
+
+JWT_SECRET
+  - Tajni ključ za potpisivanje JWT tokena
+  - U produkciji MORATE koristiti jak, nasumični string
+  - Primer: openssl rand -hex 32 (u terminalu)
+  - Ako ne postavite, koristi se default (SAMO za development!)
+
+================================================================================
+8. LOKALNO POKRETANJE
+================================================================================
+
+1. Klonirajte ili preuzmite projekat
+
+2. Instalirajte zavisnosti:
+   npm install
+
+3. Podesite environment varijable (videti sekciju 7)
+
+4. Pokrenite migracije:
+   npx drizzle-kit push
+
+5. Pokrenite development server:
+   npm run dev
+
+6. Otvorite browser:
+   http://localhost:3000
+
+7. Kreirajte admin nalog:
+   http://localhost:3000/api/seed
+
+8. Testirajte:
+   a) Idite na http://localhost:3000/login
+   b) Ulogujte se kao admin:
+      - Email: admin111@studio.com
+      - Password: adminpilates
+   c) Kreirajte test klijenta kroz admin panel
+   d) Odjavite se
+   e) Ulogujte se kao test klijent
+   f) Testirajte rezervaciju termina
+
+================================================================================
+9. DEPLOY NA NETLIFY
+================================================================================
+
+NAPOMENA: Za deployment vam je potrebna CLOUD PostgreSQL baza podataka
+(Supabase, Neon, Railway, ili slično). Lokalna baza neće raditi u produkciji.
+
+KORAK 1: Pripremite projekat
+------------------------------
+
+1. Kreirajte nalog na Supabase ili Neon i podesite bazu (videti sekciju 3)
+2. Pokrenite migracije na cloud bazi
+3. Push-ujte projekat na GitHub
+
+KORAK 2: Deploy na Netlify
+----------------------------
+
+1. Idite na https://netlify.com i registrujte se
+
+2. Kliknite "New site from Git"
+
+3. Izaberite GitHub i vaš repository
+
+4. Build podešavanja:
+   - Build command: npm run build
+   - Publish directory: .next
+   - (Netlify bi trebalo da automatski prepozna Next.js)
+
+5. Environment varijable:
+   - Idite na Site settings → Environment variables
+   - Dodajte:
+     * DATABASE_URL = vaš cloud PostgreSQL connection string
+     * JWT_SECRET = vaš tajni ključ za produkciju
+
+6. Kliknite "Deploy site"
+
+7. Nakon deploy-a, posetite vaš-sajt.netlify.app/api/seed
+   da kreirate admin nalog
+
+KORAK 3: Instalirajte Netlify Next.js plugin
+----------------------------------------------
+
+U netlify.toml (kreirajte u root-u projekta):
+
+   [build]
+     command = "npm run build"
+     publish = ".next"
+
+   [[plugins]]
+     package = "@netlify/plugin-nextjs"
+
+ALTERNATIVNO: Deploy na Vercel (jednostavnije za Next.js)
+----------------------------------------------------------
+
+1. Idite na https://vercel.com
+2. Import-ujte projekat sa GitHub-a
+3. Dodajte environment varijable
+4. Kliknite Deploy
+5. Vercel automatski prepoznaje Next.js projekte
+
+================================================================================
+10. TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "Cannot connect to database"
+REŠENJE:
+  - Proverite da li PostgreSQL server radi
+  - Proverite DATABASE_URL u .env ili .env.local
+  - Proverite da li baza podataka postoji
+  - Za lokalni PG: sudo service postgresql start (Linux)
+                    brew services start postgresql (Mac)
+
+PROBLEM: "Invalid credentials" pri login-u
+REŠENJE:
+  - Da li ste pokrenuli /api/seed za kreiranje admin-a?
+  - Proverite da li koristite tačan email i lozinku
+  - Email: admin111@studio.com
+  - Password: adminpilates
+
+PROBLEM: "Table does not exist"
+REŠENJE:
+  - Pokrenite migracije: npx drizzle-kit push
+  - Ili ručno izvršite SQL iz sekcije 4
+
+PROBLEM: Stranica se ne učitava / 500 greška
+REŠENJE:
+  - Otvorite browser dev tools (F12) → Console
+  - Proverite terminal gde je pokrenut npm run dev
+  - Proverite da li .env fajl ima tačne vrednosti
+
+PROBLEM: "CORS error" ili "Fetch failed"
+REŠENJE:
+  - Proverite da li je server pokrenut (npm run dev)
+  - Proverite URL u browseru (http://localhost:3000)
+
+PROBLEM: Middleware redirect loop
+REŠENJE:
+  - Obrišite cookies u browseru
+  - Pokušajte u incognito/private mode
+  - Proverite JWT_SECRET varijablu
+
+PROBLEM: "Email already exists" pri dodavanju klijenta
+REŠENJE:
+  - Taj email je već registrovan
+  - Koristite drugi email ili obrišite postojećeg klijenta
+
+PROBLEM: Deploy ne radi na Netlify
+REŠENJE:
+  - Proverite build logs u Netlify dashboard-u
+  - Proverite da su sve environment varijable postavljene
+  - Proverite da cloud baza podataka dozvoljava konekcije sa Netlify IP-ova
+
+PROBLEM: Rezervacija ne radi
+REŠENJE:
+  - Proverite da klijent ima remaining_sessions > 0
+  - Proverite da termin nije blokiran
+  - Proverite da klijent nema već rezervaciju za taj dan
+  - Proverite da termin nije popunjen
+
+================================================================================
+  KRAJ UPUTSTVA
+  Za dodatna pitanja, pogledajte dokumentaciju:
+  - Next.js: https://nextjs.org/docs
+  - Drizzle ORM: https://orm.drizzle.team
+  - Tailwind CSS: https://tailwindcss.com/docs
+================================================================================
