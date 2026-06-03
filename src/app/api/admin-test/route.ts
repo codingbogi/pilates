@@ -3,9 +3,9 @@ import { profiles } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET() {
-  try {
-    const email = "admin1110@studio.com";
+  const email = "admin1110@studio.com";
 
+  try {
     const rows = await db
       .select()
       .from(profiles)
@@ -13,10 +13,19 @@ export async function GET() {
       .limit(1);
 
     return Response.json(rows[0] ?? null);
-  } catch (e: any) {
-    console.error("admin-test error:", e);
+  } catch (err: any) {
+    console.error("admin-test error:", err);
+
+    const pg = err?.cause ?? err;
+
     return Response.json(
-      { error: "admin-test failed", message: e?.message ?? String(e) },
+      {
+        error: "admin-test failed",
+        message: err?.message ?? String(err),
+        code: pg?.code,
+        detail: pg?.detail,
+        hint: pg?.hint,
+      },
       { status: 500 }
     );
   }
